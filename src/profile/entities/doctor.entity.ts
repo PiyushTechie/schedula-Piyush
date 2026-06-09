@@ -24,6 +24,9 @@ export class Doctor {
   @Column()
   availability!: string;
 
+  @Column({ default: true })
+  isAvailable!: boolean;
+
   @OneToOne(() => User)
   @JoinColumn()
   user!: User;
