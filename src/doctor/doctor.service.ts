@@ -49,15 +49,10 @@ export class DoctorService {
   }
 
   async getDoctorById(id: string) {
-    try {
-      const doctor = await this.doctorRepository.findOne({ where: { id } });
+    const doctor = await this.doctorRepository.findOne({ where: { id } });
       if (!doctor) {
         throw new NotFoundException(`Doctor with ID ${id} not found.`);
-      }
+      } 
       return doctor;
-    } catch (error) {
-      // Catches invalid UUID formats gracefully
-      throw new BadRequestException('Invalid Doctor ID format.');
-    }
   }
 }

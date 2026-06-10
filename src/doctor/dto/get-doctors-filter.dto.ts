@@ -23,7 +23,11 @@ export class GetDoctorsFilterDto {
   limit?: number = 10;
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
-  @IsBoolean()
+  @Transform(({ value }) => {
+    if(value === 'true') return true;
+    if(value === 'false') return false;
+    return value;
+  })  
+  @IsBoolean({ message: 'availability must be a boolean value (true or false)' })
   availability?: boolean;
 }
