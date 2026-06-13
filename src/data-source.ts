@@ -13,4 +13,4 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   entities: ['src/**/*.entity.ts'],
   migrations: ['src/migrations/*.ts'],
-});
+}); 

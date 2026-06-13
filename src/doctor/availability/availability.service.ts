@@ -19,6 +19,12 @@ export class AvailabilityService {
     return hours * 60 + minutes;
   }
 
+  private minutesToTime(minutes: number): string {
+    const hours = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const mins = (minutes % 60).toString().padStart(2, '0');
+    return `${hours}:${mins}`;
+  }
+
   private isOverlapping(newStart: string, newEnd: string, existingStart: string, existingEnd: string): boolean {
     const s1 = this.timeToMinutes(newStart);
     const e1 = this.timeToMinutes(newEnd);
@@ -128,5 +134,71 @@ export class AvailabilityService {
       await this.recurringRepo.save(slot);
       throw error; 
     }
+  }
+
+  async getAvailableSlots(doctorId: string, date: string, duration: number = 15) {
+    if (duration <= 0) throw new BadRequestException('Duration must be positive');
+
+    const now = new Date();
+    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // Format: YYYY-MM-DD
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (date < todayString) {
+      throw new BadRequestException('Cannot fetch slots for past dates');
+    }
+
+    // 2. The Override Check 
+    let activeAvailability: any[] = await this.customRepo.find({
+      where: { doctor: { id: doctorId }, specificDate: date },
+      order: { startTime: 'ASC' },
+    });
+
+    // 3. The Fallback Check (This was accidentally deleted!)
+    if (activeAvailability.length === 0) {
+      const reqDateObj = new Date(date);
+      const dayOfWeek = reqDateObj.getDay(); // 0 = Sunday, 1 = Monday...
+
+      activeAvailability = await this.recurringRepo.find({
+        where: { doctor: { id: doctorId }, dayOfWeek },
+        order: { startTime: 'ASC' },
+      });
+    }
+
+    // 4. Final Empty Check
+    if (activeAvailability.length === 0) {
+      return { message: "Doctor is not available on this date", slots: [] };
+    }
+
+    // 5. The Meat Cleaver
+    const generatedSlots: any[] = [];
+
+    for (const block of activeAvailability) {
+      let currentSlotStart = this.timeToMinutes(block.startTime);
+      const blockEnd = this.timeToMinutes(block.endTime);
+
+      while (currentSlotStart + duration <= blockEnd) {
+        const slotStartTime = this.minutesToTime(currentSlotStart);
+        const slotEndTime = this.minutesToTime(currentSlotStart + duration);
+
+        if (date === todayString && currentSlotStart <= currentMinutes) {
+          currentSlotStart += duration;
+          continue;
+        }
+
+        generatedSlots.push({
+          date: date,
+          startTime: slotStartTime,
+          endTime: slotEndTime,
+          status: 'available', 
+        });
+
+        currentSlotStart += duration;
+      }
+    }
+    
+    console.log(`\n=== 🚀 GENERATED SLOTS FOR ${date} ===`);
+    console.log(generatedSlots);
+    
+    return { date, totalSlots: generatedSlots.length, slots: generatedSlots };
   }
 }
