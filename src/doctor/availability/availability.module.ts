@@ -11,5 +11,6 @@ import { CustomAvailability } from '../entities/custom-availability.entity';
   ],
   controllers: [AvailabilityController],
   providers: [AvailabilityService],
+  exports: [AvailabilityService],
 })
 export class AvailabilityModule {}
