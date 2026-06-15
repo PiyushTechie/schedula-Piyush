@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RecurringAvailability } from '../entities/recurring-availability.entity';
 import { CustomAvailability } from '../entities/custom-availability.entity';
+import { Appointment } from '../../appointment/entities/appointment.entity';
+import { AppointmentStatus } from '../../appointment/entities/appointment.entity';
 
 @Injectable()
 export class AvailabilityService {
@@ -11,8 +13,9 @@ export class AvailabilityService {
     private recurringRepo: Repository<RecurringAvailability>,
     @InjectRepository(CustomAvailability)
     private customRepo: Repository<CustomAvailability>,
+    @InjectRepository(Appointment)
+    private appointmentRepo: Repository<Appointment>,
   ) {}
-
 
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
@@ -34,7 +37,6 @@ export class AvailabilityService {
     return s1 < e2 && e1 > s2;
   }
 
-
   async validateRecurringConflict(doctorId: string, dayOfWeek: number, startTime: string, endTime: string) {
     if (this.timeToMinutes(startTime) >= this.timeToMinutes(endTime)) {
       throw new BadRequestException('Start time must be before end time');
@@ -53,7 +55,6 @@ export class AvailabilityService {
     }
   }
 
-  
   async createRecurring(doctorId: string, dayOfWeek: number, startTime: string, endTime: string) {
     await this.validateRecurringConflict(doctorId, dayOfWeek, startTime, endTime);
 
@@ -109,7 +110,6 @@ export class AvailabilityService {
     });
   }
 
-  
   async deleteRecurring(doctorId: string, id: string) {
     // We explicitly check doctorId so a doctor can't delete someone else's slot!
     const result = await this.recurringRepo.delete({ id, doctor: { id: doctorId } });
@@ -147,13 +147,11 @@ export class AvailabilityService {
       throw new BadRequestException('Cannot fetch slots for past dates');
     }
 
-    // 2. The Override Check 
     let activeAvailability: any[] = await this.customRepo.find({
       where: { doctor: { id: doctorId }, specificDate: date },
       order: { startTime: 'ASC' },
     });
 
-    // 3. The Fallback Check (This was accidentally deleted!)
     if (activeAvailability.length === 0) {
       const reqDateObj = new Date(date);
       const dayOfWeek = reqDateObj.getDay(); // 0 = Sunday, 1 = Monday...
@@ -164,12 +162,18 @@ export class AvailabilityService {
       });
     }
 
-    // 4. Final Empty Check
     if (activeAvailability.length === 0) {
       return { message: "Doctor is not available on this date", slots: [] };
     }
 
-    // 5. The Meat Cleaver
+    const bookedAppointments = await this.appointmentRepo.find({
+      where: { 
+        doctor: { id: doctorId }, 
+        appointmentDate: date, 
+        status: AppointmentStatus.BOOKED 
+      }
+    });
+
     const generatedSlots: any[] = [];
 
     for (const block of activeAvailability) {
@@ -180,9 +184,22 @@ export class AvailabilityService {
         const slotStartTime = this.minutesToTime(currentSlotStart);
         const slotEndTime = this.minutesToTime(currentSlotStart + duration);
 
+        //Time Machine Check
         if (date === todayString && currentSlotStart <= currentMinutes) {
           currentSlotStart += duration;
           continue;
+        }
+
+        //Double-Booking Check
+        const isBooked = bookedAppointments.some(appt => {
+          const apptStart = this.timeToMinutes(appt.startTime);
+          const apptEnd = this.timeToMinutes(appt.endTime);
+          return currentSlotStart < apptEnd && (currentSlotStart + duration) > apptStart;
+        });
+
+        if (isBooked) {
+          currentSlotStart += duration;
+          continue; 
         }
 
         generatedSlots.push({
