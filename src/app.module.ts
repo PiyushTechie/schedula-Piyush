@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { DoctorModule } from './doctor/doctor.module';
 import { AvailabilityModule } from './doctor/availability/availability.module';
+import { AppointmentModule } from './appointment/appointment.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }), 
@@ -26,6 +27,7 @@ import { AvailabilityModule } from './doctor/availability/availability.module';
     ProfileModule,
     AvailabilityModule,
     DoctorModule,
+    AppointmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
