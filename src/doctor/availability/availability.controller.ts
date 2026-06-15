@@ -28,10 +28,6 @@ export class AvailabilityController {
   @UseGuards(AuthGuard('jwt'))
   async getRecurringAvailability(@Request() req) {
     const doctorId = req.user.userId;
-    console.log(`\n======================================================`);
-    console.log(`✅ YOUR EXACT DOCTOR ID IS: ${doctorId}`);
-    console.log(`👉 USE THIS URL: http://localhost:3000/doctor/${doctorId}/slots?date=2026-06-15`);
-    console.log(`======================================================\n`);
     return this.availabilityService.getRecurring(doctorId);
   }
 

@@ -195,10 +195,6 @@ export class AvailabilityService {
         currentSlotStart += duration;
       }
     }
-    
-    console.log(`\n=== 🚀 GENERATED SLOTS FOR ${date} ===`);
-    console.log(generatedSlots);
-    
     return { date, totalSlots: generatedSlots.length, slots: generatedSlots };
   }
 }
