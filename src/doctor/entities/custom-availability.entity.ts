@@ -18,4 +18,16 @@ export class CustomAvailability {
 
   @Column({ type: 'time' })
   endTime!: string;
+
+  @Column({ type: 'enum', enum: ['STREAM', 'WAVE'], default: 'STREAM' })
+  schedulingType!: string;
+
+  @Column({ type: 'int', default: 15 }) // Used for STREAM (Duration is in minutes)
+  slotDuration!: number;
+
+  @Column({ type: 'int', default: 0 }) // Used for STREAM (Optional gap between slots)
+  bufferTime!: number;
+
+  @Column({ type: 'int', nullable: true }) // Used for WAVE (Maximum patients that are allowed)
+  maxCapacity!: number | null;
 }
