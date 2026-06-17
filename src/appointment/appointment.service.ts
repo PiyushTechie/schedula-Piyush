@@ -1,13 +1,15 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Appointment, AppointmentStatus } from './entities/appointment.entity';
+import { AvailabilityService } from 'src/doctor/availability/availability.service';
 
 @Injectable()
 export class AppointmentService {
   constructor(
     @InjectRepository(Appointment)
     private appointmentRepo: Repository<Appointment>,
+    private availabilityService: AvailabilityService
   ) {}
 
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
@@ -187,5 +189,106 @@ export class AppointmentService {
     }));
 
     return safeAppointments;
+  }
+
+  private checkCutoffTime(appointmentDate: string, startTime: string): void {
+    const now = new Date(); 
+    
+    const cleanTime = startTime.substring(0, 5); 
+    
+    const appointmentDateTime = new Date(`${appointmentDate}T${cleanTime}:00+05:30`);
+    
+    const diffInMilliseconds = appointmentDateTime.getTime() - now.getTime();
+    const diffInMinutes = Math.floor(diffInMilliseconds / (1000 * 60));
+
+    if (diffInMinutes <= 30 && diffInMinutes > 0) {
+      throw new BadRequestException(`Action not allowed. Only ${diffInMinutes} minutes remaining until the appointment.`);
+    }
+    if (diffInMinutes <= 0) {
+      throw new BadRequestException('Action not allowed. The appointment has already started or passed.');
+    }
+  }
+
+  private async suggestNextAvailableSlot(doctorId: string, targetDate: string) {
+    const availability = await this.availabilityService.getAvailableSlots(doctorId, targetDate);
+    
+    let nextSlot = availability.slots.find(slot => slot.status === 'available');
+    if (nextSlot) return nextSlot;
+
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayString = nextDay.toISOString().split('T')[0];
+
+    const nextDayAvailability = await this.availabilityService.getAvailableSlots(doctorId, nextDayString);
+    nextSlot = nextDayAvailability.slots.find(slot => slot.status === 'available');
+
+    return nextSlot || null;
+  }
+
+  async rescheduleAppointment(
+    patientId: string, 
+    appointmentId: string, 
+    newDate: string, 
+    newStartTime: string, 
+    newEndTime: string, 
+    newSchedulingType: string
+  ) {
+    const appointment = await this.appointmentRepo.findOne({
+      where: { id: appointmentId },
+      relations: { patient: true, doctor: true }
+    });
+
+    if (!appointment) throw new NotFoundException('Appointment not found');
+    if (appointment.patient.id !== patientId) throw new UnauthorizedException('You can only reschedule your own appointments');
+    if (appointment.status === AppointmentStatus.CANCELLED) throw new BadRequestException('Cannot reschedule a cancelled appointment');
+    if (appointment.appointmentDate === newDate && appointment.startTime === newStartTime) {
+      throw new BadRequestException('New time must be different from current time');
+    }
+
+    this.checkCutoffTime(appointment.appointmentDate, appointment.startTime);
+
+    const doctorId = appointment.doctor.id;
+    let tokenNumber: number | null = null;
+
+    if (newSchedulingType === 'WAVE') {
+      const existingWaveBookings = await this.appointmentRepo.find({
+        where: { doctor: { id: doctorId }, appointmentDate: newDate, startTime: newStartTime, status: AppointmentStatus.BOOKED },
+      });
+
+      const MAX_CAPACITY = 2; 
+      if (existingWaveBookings.length >= MAX_CAPACITY) {
+        const suggestion = await this.suggestNextAvailableSlot(doctorId, newDate);
+        throw new ConflictException({
+          message: 'Requested wave is full.',
+          suggestedSlot: suggestion ? suggestion : 'No immediate slots available.'
+        });
+      }
+      tokenNumber = existingWaveBookings.length + 1;
+
+    } else { 
+      const existingBooking = await this.appointmentRepo.findOne({
+        where: { doctor: { id: doctorId }, appointmentDate: newDate, startTime: newStartTime, status: AppointmentStatus.BOOKED },
+      });
+
+      if (existingBooking) {
+        const suggestion = await this.suggestNextAvailableSlot(doctorId, newDate);
+        throw new ConflictException({
+          message: 'Requested slot is already booked.',
+          suggestedSlot: suggestion ? suggestion : 'No immediate slots available.'
+        });
+      }
+    }
+
+    appointment.appointmentDate = newDate;
+    appointment.startTime = newStartTime;
+    appointment.endTime = newEndTime;
+    appointment.schedulingType = newSchedulingType;
+    appointment.tokenNumber = tokenNumber;
+
+    const savedAppointment = await this.appointmentRepo.save(appointment);
+
+    const { patient, doctor, ...cleanAppointment } = savedAppointment;
+
+    return cleanAppointment;
   }
 }
