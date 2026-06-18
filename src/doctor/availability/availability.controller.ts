@@ -7,21 +7,27 @@ export class AvailabilityController {
   constructor(private readonly availabilityService: AvailabilityService) {}
 
   @Post()
-  @UseGuards(AuthGuard('jwt')) // Only logged-in users can add availability
+  @UseGuards(AuthGuard('jwt')) 
   async addRecurringAvailability(@Request() req, @Body() body: any) {
     const doctorId = req.user.userId; 
-    const { dayOfWeek, startTime, endTime } = body;
+    
+    const { dayOfWeek, startTime, endTime, schedulingType, maxCapacity, slotDuration, bufferTime } = body;
 
-    return this.availabilityService.createRecurring(doctorId, dayOfWeek, startTime, endTime);
+    return this.availabilityService.createRecurring(
+      doctorId, dayOfWeek, startTime, endTime, schedulingType, maxCapacity, slotDuration, bufferTime
+    );
   }
 
   @Post('override')
   @UseGuards(AuthGuard('jwt'))
   async addCustomOverride(@Request() req, @Body() body: any) {
     const doctorId = req.user.userId;
-    const { specificDate, startTime, endTime } = body;
+    
+    const { specificDate, startTime, endTime, schedulingType, maxCapacity, slotDuration, bufferTime } = body;
 
-    return this.availabilityService.createCustomOverride(doctorId, specificDate, startTime, endTime);
+    return this.availabilityService.createCustomOverride(
+      doctorId, specificDate, startTime, endTime, schedulingType, maxCapacity, slotDuration, bufferTime
+    );
   }
 
   @Get()

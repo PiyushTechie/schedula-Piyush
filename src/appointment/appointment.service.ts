@@ -10,7 +10,7 @@ export class AppointmentService {
     private appointmentRepo: Repository<Appointment>,
   ) {}
 
-  async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string) {
+  async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
     const now = new Date();
     const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -26,32 +26,84 @@ export class AppointmentService {
       throw new BadRequestException('You cannot book an appointment with yourself.');
     }
 
-    const existingBooking = await this.appointmentRepo.findOne({
-      where: {
+    // PATH A: WAVE SCHEDULING (Token Logic)
+    if (schedulingType === 'WAVE') {
+      const existingWaveBookings = await this.appointmentRepo.find({
+        where: {
+          doctor: { id: doctorId },
+          appointmentDate: date,
+          startTime: startTime,
+          endTime: endTime,
+          status: AppointmentStatus.BOOKED,
+        },
+        relations: { patient: true } 
+      });
+
+      const hasPatientAlreadyBooked = existingWaveBookings.some(
+        appt => appt.patient.id === patientId
+      );
+
+      if (hasPatientAlreadyBooked) {
+        throw new ConflictException('You have already booked a token for this exact time window.');
+      }
+     
+      const MAX_CAPACITY = 5; 
+
+      if (existingWaveBookings.length >= MAX_CAPACITY) {
+        throw new ConflictException('Wave is full. Maximum patient capacity reached for this window.');
+      }
+
+      const tokenNumber = existingWaveBookings.length + 1;
+
+      const appointment = this.appointmentRepo.create({
+        patient: { id: patientId },
         doctor: { id: doctorId },
         appointmentDate: date,
-        startTime: startTime,
+        startTime,
+        endTime,
         status: AppointmentStatus.BOOKED,
-      },
-    });
+        schedulingType: 'WAVE',
+        tokenNumber: tokenNumber, 
+      });
 
-    if (existingBooking) {
-      throw new ConflictException('This slot has already been booked. Please choose another time.');
-    }
+      try {
+        return await this.appointmentRepo.save(appointment);
+      } catch (error) {
+        throw new NotFoundException('Doctor not found or invalid data provided.');
+      }
+    } 
+    
+    // PATH B: STREAM SCHEDULING (Slot Logic)
+    else {
+      const existingBooking = await this.appointmentRepo.findOne({
+        where: {
+          doctor: { id: doctorId },
+          appointmentDate: date,
+          startTime: startTime,
+          status: AppointmentStatus.BOOKED,
+        },
+      });
 
-    const appointment = this.appointmentRepo.create({
-      patient: { id: patientId },
-      doctor: { id: doctorId },
-      appointmentDate: date,
-      startTime,
-      endTime,
-      status: AppointmentStatus.BOOKED,
-    });
+      if (existingBooking) {
+        throw new ConflictException('This exact slot has already been booked. Please choose another time.');
+      }
 
-    try {
-      return await this.appointmentRepo.save(appointment);
-    } catch (error) {
-      throw new NotFoundException('Doctor not found or invalid data provided.');
+      const appointment = this.appointmentRepo.create({
+        patient: { id: patientId },
+        doctor: { id: doctorId },
+        appointmentDate: date,
+        startTime,
+        endTime,
+        status: AppointmentStatus.BOOKED,
+        schedulingType: 'STREAM',
+        tokenNumber: null, 
+      });
+
+      try {
+        return await this.appointmentRepo.save(appointment);
+      } catch (error) {
+        throw new NotFoundException('Doctor not found or invalid data provided.');
+      }
     }
   }
   

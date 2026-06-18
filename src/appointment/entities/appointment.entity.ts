@@ -42,6 +42,12 @@ export class Appointment {
   })
   status!: AppointmentStatus;
 
+  @Column({ type: 'enum', enum: ['STREAM', 'WAVE'], default: 'STREAM' })
+  schedulingType!: string;
+
+  @Column({ type: 'int', nullable: true })
+  tokenNumber?: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

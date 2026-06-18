@@ -10,6 +10,8 @@ export class AppointmentController {
 
   @Post()
   async bookAppointment(@Request() req, @Body() dto: BookAppointmentDto) {
+    
+    console.log("INCOMING DTO:", dto);
     const patientId = req.user.userId;
     
     return this.appointmentService.bookAppointment(
@@ -17,7 +19,8 @@ export class AppointmentController {
       dto.doctorId,
       dto.date,
       dto.startTime,
-      dto.endTime
+      dto.endTime,
+      dto.schedulingType
     );
   }
 
