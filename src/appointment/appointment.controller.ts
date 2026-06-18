@@ -2,6 +2,7 @@ import { Controller, Post, Body, UseGuards, Request, Get, Patch, Param } from '@
 import { AppointmentService } from './appointment.service';
 import { BookAppointmentDto } from './dto/book-appointment.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
 @Controller('appointment')
 @UseGuards(AuthGuard('jwt'))
@@ -10,6 +11,7 @@ export class AppointmentController {
 
   @Post()
   async bookAppointment(@Request() req, @Body() dto: BookAppointmentDto) {
+    
     const patientId = req.user.userId;
     
     return this.appointmentService.bookAppointment(
@@ -17,7 +19,8 @@ export class AppointmentController {
       dto.doctorId,
       dto.date,
       dto.startTime,
-      dto.endTime
+      dto.endTime,
+      dto.schedulingType
     );
   }
 
@@ -37,5 +40,22 @@ export class AppointmentController {
   async getDoctorAppointments(@Request() req) {
     const doctorId = req.user.userId;
     return this.appointmentService.getDoctorAppointments(doctorId);
+  }
+
+  @Patch(':id/reschedule')
+  async rescheduleAppointment(
+    @Request() req, 
+    @Param('id') appointmentId: string, 
+    @Body() dto: RescheduleAppointmentDto
+  ) {
+    const patientId = req.user.userId;
+    return this.appointmentService.rescheduleAppointment(
+      patientId,
+      appointmentId,
+      dto.newDate,
+      dto.newStartTime,
+      dto.newEndTime,
+      dto.newSchedulingType
+    );
   }
 }

@@ -42,6 +42,12 @@ export class Appointment {
   })
   status!: AppointmentStatus;
 
+  @Column({ type: 'varchar', nullable: true })
+  schedulingType!: string;
+
+  @Column({ type: 'int', nullable: true })
+  tokenNumber!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
