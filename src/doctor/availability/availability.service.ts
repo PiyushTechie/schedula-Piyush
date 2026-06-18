@@ -55,7 +55,16 @@ export class AvailabilityService {
     }
   }
 
-  async createRecurring(doctorId: string, dayOfWeek: number, startTime: string, endTime: string) {
+  async createRecurring(
+    doctorId: string, 
+    dayOfWeek: number, 
+    startTime: string, 
+    endTime: string,
+    schedulingType: string = 'STREAM',
+    maxCapacity: number | null = null,
+    slotDuration: number = 15,
+    bufferTime: number = 0
+  ) {
     await this.validateRecurringConflict(doctorId, dayOfWeek, startTime, endTime);
 
     const newAvailability = this.recurringRepo.create({
@@ -63,13 +72,25 @@ export class AvailabilityService {
       dayOfWeek,
       startTime,
       endTime,
+      schedulingType,
+      maxCapacity,
+      slotDuration,
+      bufferTime,
     });
 
     return this.recurringRepo.save(newAvailability);
   }
 
-  async createCustomOverride(doctorId: string, specificDate: string, startTime: string, endTime: string) {
-    // 1. Basic time sanity check
+  async createCustomOverride(
+    doctorId: string, 
+    specificDate: string, 
+    startTime: string, 
+    endTime: string,
+    schedulingType: string = 'STREAM',
+    maxCapacity: number | null = null,
+    slotDuration: number = 15,
+    bufferTime: number = 0
+  ) {
     if (this.timeToMinutes(startTime) >= this.timeToMinutes(endTime)) {
       throw new BadRequestException('Start time must be before end time');
     }
@@ -91,6 +112,10 @@ export class AvailabilityService {
       specificDate,
       startTime,
       endTime,
+      schedulingType,
+      maxCapacity,
+      slotDuration,
+      bufferTime,
     });
 
     return this.customRepo.save(override);
@@ -136,11 +161,11 @@ export class AvailabilityService {
     }
   }
 
-  async getAvailableSlots(doctorId: string, date: string, duration: number = 15) {
-    if (duration <= 0) throw new BadRequestException('Duration must be positive');
+ async getAvailableSlots(doctorId: string, date: string, defaultDuration: number = 15) {
+    if (defaultDuration <= 0) throw new BadRequestException('Duration must be positive');
 
     const now = new Date();
-    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // Format: YYYY-MM-DD
+    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     if (date < todayString) {
@@ -154,7 +179,7 @@ export class AvailabilityService {
 
     if (activeAvailability.length === 0) {
       const reqDateObj = new Date(date);
-      const dayOfWeek = reqDateObj.getDay(); // 0 = Sunday, 1 = Monday...
+      const dayOfWeek = reqDateObj.getDay();
 
       activeAvailability = await this.recurringRepo.find({
         where: { doctor: { id: doctorId }, dayOfWeek },
@@ -179,37 +204,65 @@ export class AvailabilityService {
     for (const block of activeAvailability) {
       let currentSlotStart = this.timeToMinutes(block.startTime);
       const blockEnd = this.timeToMinutes(block.endTime);
+      
+      const type = block.schedulingType || 'STREAM';
 
-      while (currentSlotStart + duration <= blockEnd) {
-        const slotStartTime = this.minutesToTime(currentSlotStart);
-        const slotEndTime = this.minutesToTime(currentSlotStart + duration);
+      // PATH A: WAVE SCHEDULING (Grouped Window)
+      if (type === 'WAVE') {
+        const capacity = block.maxCapacity || 5;
 
-        //Time Machine Check
-        if (date === todayString && currentSlotStart <= currentMinutes) {
-          currentSlotStart += duration;
-          continue;
-        }
-
-        //Double-Booking Check
-        const isBooked = bookedAppointments.some(appt => {
+        const bookedCount = bookedAppointments.filter(appt => {
           const apptStart = this.timeToMinutes(appt.startTime);
-          const apptEnd = this.timeToMinutes(appt.endTime);
-          return currentSlotStart < apptEnd && (currentSlotStart + duration) > apptStart;
-        });
+          return apptStart >= currentSlotStart && apptStart < blockEnd;
+        }).length;
 
-        if (isBooked) {
-          currentSlotStart += duration;
+        if (date === todayString && blockEnd <= currentMinutes) {
           continue; 
         }
 
         generatedSlots.push({
           date: date,
-          startTime: slotStartTime,
-          endTime: slotEndTime,
-          status: 'available', 
+          startTime: block.startTime,
+          endTime: block.endTime,
+          schedulingType: 'WAVE',
+          capacity: capacity,
+          booked: bookedCount,
+          status: bookedCount >= capacity ? 'full' : 'available',
         });
+      } 
+   
+      // PATH B: STREAM SCHEDULING (Exact Minutes)
+      else {
+        const slotDuration = block.slotDuration || defaultDuration;
+        const buffer = block.bufferTime || 0;
 
-        currentSlotStart += duration;
+        while (currentSlotStart + slotDuration <= blockEnd) {
+          const slotStartTime = this.minutesToTime(currentSlotStart);
+          const slotEndTime = this.minutesToTime(currentSlotStart + slotDuration);
+
+          if (date === todayString && currentSlotStart <= currentMinutes) {
+            currentSlotStart += (slotDuration + buffer);
+            continue;
+          }
+
+          const isBooked = bookedAppointments.some(appt => {
+            const apptStart = this.timeToMinutes(appt.startTime);
+            const apptEnd = this.timeToMinutes(appt.endTime);
+            return currentSlotStart < apptEnd && (currentSlotStart + slotDuration) > apptStart;
+          });
+
+          if (!isBooked) {
+            generatedSlots.push({
+              date: date,
+              startTime: slotStartTime,
+              endTime: slotEndTime,
+              schedulingType: 'STREAM',
+              status: 'available',
+            });
+          }
+
+          currentSlotStart += (slotDuration + buffer);
+        }
       }
     }
     return { date, totalSlots: generatedSlots.length, slots: generatedSlots };

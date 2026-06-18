@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsString, Matches, IsEnum, IsOptional } from 'class-validator';
 
 export class BookAppointmentDto {
   @IsUUID()
@@ -16,4 +16,8 @@ export class BookAppointmentDto {
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'End time must be in HH:mm format' })
   endTime!: string;
+
+  @IsOptional()
+  @IsEnum(['STREAM', 'WAVE'])
+  schedulingType?: string;
 }
