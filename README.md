@@ -60,8 +60,6 @@ $ npm run start:dev
 
 ## 📖 API Documentation
 
-Below is the swagger-style reference for the RESTful API endpoints exposed by the Schedula engine.
-
 ### 🔐 Auth
 
 <details>
