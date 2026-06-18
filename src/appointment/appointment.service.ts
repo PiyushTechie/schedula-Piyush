@@ -245,6 +245,17 @@ export class AppointmentService {
       throw new BadRequestException('New time must be different from current time');
     }
 
+    const now = new Date();
+    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const [startHours, startMinutes] = newStartTime.split(':').map(Number);
+    const slotStartMinutes = startHours * 60 + startMinutes;
+
+    if (newDate < todayString || (newDate === todayString && slotStartMinutes <= currentMinutes)) {
+      throw new BadRequestException('Cannot reschedule to a past date or time.');
+    }
+
     this.checkCutoffTime(appointment.appointmentDate, appointment.startTime);
 
     const doctorId = appointment.doctor.id;

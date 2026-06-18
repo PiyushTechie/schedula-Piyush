@@ -95,6 +95,13 @@ export class AvailabilityService {
       throw new BadRequestException('Start time must be before end time');
     }
 
+    const now = new Date();
+    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    if (specificDate < todayString) {
+      throw new BadRequestException('Cannot set an availability override for a past date.');
+    }
+
     const existingOverrides = await this.customRepo.find({
       where: { doctor: { id: doctorId }, specificDate },
     });
