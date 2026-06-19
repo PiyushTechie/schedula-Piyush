@@ -7,13 +7,13 @@ import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 @Controller('appointment')
 @UseGuards(AuthGuard('jwt'))
 export class AppointmentController {
-  constructor(private readonly appointmentService: AppointmentService) {}
+  constructor(private readonly appointmentService: AppointmentService) { }
 
   @Post()
   async bookAppointment(@Request() req, @Body() dto: BookAppointmentDto) {
-    
+
     const patientId = req.user.userId;
-    
+
     return this.appointmentService.bookAppointment(
       patientId,
       dto.doctorId,
@@ -35,17 +35,11 @@ export class AppointmentController {
     const patientId = req.user.userId;
     return this.appointmentService.cancelAppointment(patientId, appointmentId);
   }
-  
-  @Get('doctor')
-  async getDoctorAppointments(@Request() req) {
-    const doctorId = req.user.userId;
-    return this.appointmentService.getDoctorAppointments(doctorId);
-  }
 
   @Patch(':id/reschedule')
   async rescheduleAppointment(
-    @Request() req, 
-    @Param('id') appointmentId: string, 
+    @Request() req,
+    @Param('id') appointmentId: string,
     @Body() dto: RescheduleAppointmentDto
   ) {
     const patientId = req.user.userId;
