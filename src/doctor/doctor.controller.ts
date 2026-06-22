@@ -63,8 +63,6 @@ export class DoctorController {
       throw new BadRequestException('Cannot search for availability in the past. Please select today or a future date.');
     }
 
-    await this.doctorService.getDoctorById(doctorId);
-
     const duration = durationStr ? parseInt(durationStr, 10) : 15;
     
     return this.availabilityService.getNextAvailableSlots(doctorId, date, duration, 30);
