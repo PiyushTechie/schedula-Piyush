@@ -45,6 +45,31 @@ export class DoctorController {
     return this.doctorService.cancelAppointment(doctorId, id);
   }
 
+  @Get(':doctorId/next-available')
+  async getNextAvailable(
+    @Param('doctorId', ParseUUIDPipe) doctorId: string,
+    @Query('date') date: string, 
+    @Query('duration') durationStr: string
+  ) {
+    if (!date) {
+      throw new BadRequestException('Start date query parameter is required (YYYY-MM-DD)');
+    }
+
+    const searchDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (searchDate < today) {
+      throw new BadRequestException('Cannot search for availability in the past. Please select today or a future date.');
+    }
+
+    await this.doctorService.getDoctorById(doctorId);
+
+    const duration = durationStr ? parseInt(durationStr, 10) : 15;
+    
+    return this.availabilityService.getNextAvailableSlots(doctorId, date, duration, 30);
+  }
+
   @Get(':id')
   getDoctorById(@Param('id', ParseUUIDPipe) id: string) {
     return this.doctorService.getDoctorById(id);

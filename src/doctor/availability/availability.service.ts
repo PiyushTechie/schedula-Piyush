@@ -274,4 +274,32 @@ export class AvailabilityService {
     }
     return { date, totalSlots: generatedSlots.length, slots: generatedSlots };
   }
+
+  async getNextAvailableSlots(doctorId: string, startDate: string, duration: number, maxDaysToSearch = 30) {
+    let currentDate = new Date(startDate);
+
+    for (let i = 0; i < maxDaysToSearch; i++) {
+      const dateString = currentDate.toISOString().split('T')[0];
+
+      try {
+        const availabilityResult = await this.getAvailableSlots(doctorId, dateString, duration);
+
+        if (availabilityResult && availabilityResult.slots && availabilityResult.slots.length > 0) {
+          return {
+            message: i === 0 
+              ? "Slots available for the requested date." 
+              : `No available slots on the requested date. Next available slots found on ${dateString}.`,
+            nextAvailableDate: dateString,
+            availableSlots: availabilityResult.slots,
+          };
+        }
+      } catch (error) {
+        // Continue to the next day if the current day throws an error (like a weekly off)
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    throw new NotFoundException(`No appointments available in the next ${maxDaysToSearch} working days. Please try again later.`);
+  }
 }
