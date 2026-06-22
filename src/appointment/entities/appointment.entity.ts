@@ -4,7 +4,8 @@ import {
   Column, 
   ManyToOne, 
   CreateDateColumn, 
-  UpdateDateColumn 
+  UpdateDateColumn, 
+  JoinColumn
 } from 'typeorm';
 import { User } from '../../auth/user.entity';
 
@@ -19,12 +20,6 @@ export enum AppointmentStatus {
 export class Appointment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
-
-  @ManyToOne(() => User)
-  patient!: User;
-
-  @ManyToOne(() => User)
-  doctor!: User;
 
   @Column({ type: 'date' })
   appointmentDate!: string; // Format: YYYY-MM-DD
@@ -48,6 +43,20 @@ export class Appointment {
   @Column({ type: 'int', nullable: true })
   tokenNumber!: number | null;
 
+  @Column()
+  patientId!: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'patientId' }) 
+  patient!: User;
+
+  @Column()
+  doctorId!: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'doctorId' }) 
+  doctor!: User;
+  
   @CreateDateColumn()
   createdAt!: Date;
 
