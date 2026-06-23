@@ -7,6 +7,8 @@ import {
   Request,
   Patch,
   ParseUUIDPipe,
+  ParseIntPipe,
+  DefaultValuePipe,
   BadRequestException
 } from '@nestjs/common';
 import { DoctorService } from './doctor.service';
@@ -49,8 +51,12 @@ export class DoctorController {
   async getNextAvailable(
     @Param('doctorId', ParseUUIDPipe) doctorId: string,
     @Query('date') date: string, 
-    @Query('duration') durationStr: string
+    @Query('duration') durationStr?: string
   ) {
+
+    const duration = durationStr ? parseInt(durationStr, 10) : 15;
+    
+    
     if (!date) {
       throw new BadRequestException('Start date query parameter is required (YYYY-MM-DD)');
     }
@@ -60,10 +66,17 @@ export class DoctorController {
     today.setHours(0, 0, 0, 0);
 
     if (searchDate < today) {
-      throw new BadRequestException('Cannot search for availability in the past. Please select today or a future date.');
+      throw new BadRequestException('Cannot search for availability in the past.');
     }
 
-    const duration = durationStr ? parseInt(durationStr, 10) : 15;
+    // Explicit check for invalid duration string like "abcd"
+    if (durationStr !== undefined && isNaN(parseInt(durationStr, 10))) {
+      throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
+    }
+
+    if (isNaN(duration) || duration <= 0 || duration > 120) {
+      throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
+    }
     
     return this.availabilityService.getNextAvailableSlots(doctorId, date, duration, 30);
   }
@@ -83,7 +96,15 @@ export class DoctorController {
       throw new BadRequestException('Date query parameter is required (YYYY-MM-DD)');
     }
 
+    if (durationStr !== undefined && isNaN(parseInt(durationStr, 10))) {
+      throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
+    }
+
     const duration = durationStr ? parseInt(durationStr, 10) : 15;
+
+    if (isNaN(duration) || duration <= 0 || duration > 120) {
+      throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
+    }
 
     return this.availabilityService.getAvailableSlots(doctorId, date, duration);
   }
