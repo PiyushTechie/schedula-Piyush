@@ -8,12 +8,14 @@ import { ProfileModule } from './profile/profile.module';
 import { DoctorModule } from './doctor/doctor.module';
 import { AvailabilityModule } from './doctor/availability/availability.module';
 import { AppointmentModule } from './appointment/appointment.module';
+import { NotificationModule } from './notification/notification.module';
+
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }), 
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL, 
+      url: process.env.DATABASE_URL,
       ssl: true,
       extra: {
         ssl: {
@@ -21,15 +23,16 @@ import { AppointmentModule } from './appointment/appointment.module';
         },
       },
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: false, 
+      synchronize: false,
     }),
     AuthModule,
     ProfileModule,
     AvailabilityModule,
     DoctorModule,
     AppointmentModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

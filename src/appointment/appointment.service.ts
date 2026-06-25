@@ -5,17 +5,35 @@ import { Appointment, AppointmentStatus } from './entities/appointment.entity';
 import { AvailabilityService } from 'src/doctor/availability/availability.service';
 import { NotificationService } from 'src/notification/notification.service';
 import { NotificationType } from 'src/notification/notification.entity';
-
+import { ProfileService } from 'src/profile/profile.service';
 @Injectable()
 export class AppointmentService {
   constructor(
     @InjectRepository(Appointment)
     private appointmentRepo: Repository<Appointment>,
     private availabilityService: AvailabilityService,
-    private readonly notificationService: NotificationService
+    private readonly notificationService: NotificationService,
+    private readonly profileService: ProfileService
   ) {}
 
+  private validateCalendarDate(dateStr: string) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+    if (
+      parsedDate.getFullYear() !== year ||
+      parsedDate.getMonth() + 1 !== month ||
+      parsedDate.getDate() !== day
+    ) {
+      throw new BadRequestException(`Invalid calendar date provided: ${dateStr}`);
+    }
+  }
+
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
+    this.validateCalendarDate(date);
+
+    // Ensure the user has completed their patient profile before allowing booking
+    await this.profileService.getPatientProfile(patientId);
+
     const now = new Date();
     const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -249,6 +267,8 @@ export class AppointmentService {
     newEndTime: string, 
     newSchedulingType: string
   ) {
+    this.validateCalendarDate(newDate);
+
     const appointment = await this.appointmentRepo.findOne({
       where: { id: appointmentId },
       relations: { patient: true, doctor: true }
