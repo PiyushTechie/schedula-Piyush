@@ -126,7 +126,7 @@ export class AppointmentService {
       throw new NotFoundException('Doctor not found or invalid data provided.');
     }
 
-    await this.notificationService.createAutomatedNotification(
+    await this.notificationService.create(
       patientId,
       'Appointment Confirmed',
       `Your appointment has been booked successfully for ${date} at ${startTime}.`,
@@ -189,7 +189,7 @@ export class AppointmentService {
     appointment.status = AppointmentStatus.CANCELLED;
     await this.appointmentRepo.save(appointment);
 
-    await this.notificationService.createAutomatedNotification(
+    await this.notificationService.create(
       appointment.patient.id,
       'Appointment Cancelled',
       `Your appointment scheduled on ${appointment.appointmentDate} at ${appointment.startTime} has been cancelled.`,
@@ -334,7 +334,7 @@ export class AppointmentService {
 
     const savedAppointment = await this.appointmentRepo.save(appointment);
 
-    await this.notificationService.createAutomatedNotification(
+    await this.notificationService.create(
       appointment.patient.id,
       'Appointment Rescheduled',
       `Your appointment has been rescheduled to ${newDate} at ${newStartTime}.`,

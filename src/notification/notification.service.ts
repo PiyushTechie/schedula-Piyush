@@ -47,7 +47,7 @@ export class NotificationService {
     });
   }
 
-  async createAutomatedNotification(
+  async create(
     patientId: string,
     title: string,
     message: string,
