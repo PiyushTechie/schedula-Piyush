@@ -3,16 +3,37 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Appointment, AppointmentStatus } from './entities/appointment.entity';
 import { AvailabilityService } from 'src/doctor/availability/availability.service';
-
+import { NotificationService } from 'src/notification/notification.service';
+import { NotificationType } from 'src/notification/notification.entity';
+import { ProfileService } from 'src/profile/profile.service';
 @Injectable()
 export class AppointmentService {
   constructor(
     @InjectRepository(Appointment)
     private appointmentRepo: Repository<Appointment>,
-    private availabilityService: AvailabilityService
+    private availabilityService: AvailabilityService,
+    private readonly notificationService: NotificationService,
+    private readonly profileService: ProfileService
   ) {}
 
+  private validateCalendarDate(dateStr: string) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+    if (
+      parsedDate.getFullYear() !== year ||
+      parsedDate.getMonth() + 1 !== month ||
+      parsedDate.getDate() !== day
+    ) {
+      throw new BadRequestException(`Invalid calendar date provided: ${dateStr}`);
+    }
+  }
+
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
+    this.validateCalendarDate(date);
+
+    // Ensure the user has completed their patient profile before allowing booking
+    await this.profileService.getPatientProfile(patientId);
+
     const now = new Date();
     const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -27,6 +48,8 @@ export class AppointmentService {
     if (patientId === doctorId) {
       throw new BadRequestException('You cannot book an appointment with yourself.');
     }
+
+    let appointment; 
 
     // PATH A: WAVE SCHEDULING (Token Logic)
     if (schedulingType === 'WAVE') {
@@ -48,7 +71,7 @@ export class AppointmentService {
       if (hasPatientAlreadyBooked) {
         throw new ConflictException('You have already booked a token for this exact time window.');
       }
-     
+      
       const MAX_CAPACITY = 5; 
 
       if (existingWaveBookings.length >= MAX_CAPACITY) {
@@ -57,7 +80,7 @@ export class AppointmentService {
 
       const tokenNumber = existingWaveBookings.length + 1;
 
-      const appointment = this.appointmentRepo.create({
+      appointment = this.appointmentRepo.create({
         patient: { id: patientId },
         doctor: { id: doctorId },
         appointmentDate: date,
@@ -67,12 +90,6 @@ export class AppointmentService {
         schedulingType: 'WAVE',
         tokenNumber: tokenNumber, 
       });
-
-      try {
-        return await this.appointmentRepo.save(appointment);
-      } catch (error) {
-        throw new NotFoundException('Doctor not found or invalid data provided.');
-      }
     } 
     
     // PATH B: STREAM SCHEDULING (Slot Logic)
@@ -90,7 +107,7 @@ export class AppointmentService {
         throw new ConflictException('This exact slot has already been booked. Please choose another time.');
       }
 
-      const appointment = this.appointmentRepo.create({
+      appointment = this.appointmentRepo.create({
         patient: { id: patientId },
         doctor: { id: doctorId },
         appointmentDate: date,
@@ -100,13 +117,23 @@ export class AppointmentService {
         schedulingType: 'STREAM',
         tokenNumber: null, 
       });
-
-      try {
-        return await this.appointmentRepo.save(appointment);
-      } catch (error) {
-        throw new NotFoundException('Doctor not found or invalid data provided.');
-      }
     }
+
+    let savedAppointment;
+    try {
+      savedAppointment = await this.appointmentRepo.save(appointment);
+    } catch (error) {
+      throw new NotFoundException('Doctor not found or invalid data provided.');
+    }
+
+    await this.notificationService.create(
+      patientId,
+      'Appointment Confirmed',
+      `Your appointment has been booked successfully for ${date} at ${startTime}.`,
+      NotificationType.APPOINTMENT_BOOKED
+    );
+
+    return savedAppointment;
   }
   
   async getPatientAppointments(patientId: string) {
@@ -161,6 +188,13 @@ export class AppointmentService {
 
     appointment.status = AppointmentStatus.CANCELLED;
     await this.appointmentRepo.save(appointment);
+
+    await this.notificationService.create(
+      appointment.patient.id,
+      'Appointment Cancelled',
+      `Your appointment scheduled on ${appointment.appointmentDate} at ${appointment.startTime} has been cancelled.`,
+      NotificationType.APPOINTMENT_CANCELLED
+    );
 
     return { message: 'Appointment cancelled successfully', appointmentId: appointment.id };
   }
@@ -233,6 +267,8 @@ export class AppointmentService {
     newEndTime: string, 
     newSchedulingType: string
   ) {
+    this.validateCalendarDate(newDate);
+
     const appointment = await this.appointmentRepo.findOne({
       where: { id: appointmentId },
       relations: { patient: true, doctor: true }
@@ -297,6 +333,13 @@ export class AppointmentService {
     appointment.tokenNumber = tokenNumber;
 
     const savedAppointment = await this.appointmentRepo.save(appointment);
+
+    await this.notificationService.create(
+      appointment.patient.id,
+      'Appointment Rescheduled',
+      `Your appointment has been rescheduled to ${newDate} at ${newStartTime}.`,
+      NotificationType.APPOINTMENT_RESCHEDULED
+    );
 
     const { patient, doctor, ...cleanAppointment } = savedAppointment;
 
