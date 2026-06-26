@@ -43,6 +43,9 @@ export class Appointment {
   @Column({ type: 'int', nullable: true })
   tokenNumber!: number | null;
 
+  @Column({default: false})
+  isReminderSent!: boolean;
+  
   @Column()
   patientId!: string;
 

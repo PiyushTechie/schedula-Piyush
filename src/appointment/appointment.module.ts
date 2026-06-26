@@ -6,9 +6,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AvailabilityModule } from '../doctor/availability/availability.module';
 import { NotificationModule } from 'src/notification/notification.module';
 import { ProfileModule } from 'src/profile/profile.module';
+import { Doctor } from 'src/profile/entities/doctor.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Appointment]), AvailabilityModule, NotificationModule, ProfileModule],
+  imports: [TypeOrmModule.forFeature([Appointment, Doctor]), AvailabilityModule, NotificationModule, ProfileModule],
   controllers: [AppointmentController],
   providers: [AppointmentService]
 })
