@@ -31,7 +31,6 @@ export class AppointmentService {
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
     this.validateCalendarDate(date);
 
-    // Ensure the user has completed their patient profile before allowing booking
     await this.profileService.getPatientProfile(patientId);
 
     const now = new Date();
@@ -41,8 +40,16 @@ export class AppointmentService {
     const [startHours, startMinutes] = startTime.split(':').map(Number);
     const slotStartMinutes = startHours * 60 + startMinutes;
 
-    if (date < todayString || (date === todayString && slotStartMinutes <= currentMinutes)) {
-      throw new BadRequestException('Cannot book an appointment in the past.');
+    if (date < todayString) {
+      throw new BadRequestException('Booking failed: You cannot book an appointment for a past date.');
+    }
+
+    if (date > todayString) {
+      throw new BadRequestException('Booking failed: Appointments are currently only allowed for today.');
+    }
+
+    if (date === todayString && slotStartMinutes <= currentMinutes) {
+      throw new BadRequestException('Booking failed: You cannot book a time slot that has already passed today.');
     }
 
     if (patientId === doctorId) {
