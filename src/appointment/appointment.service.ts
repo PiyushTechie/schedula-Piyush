@@ -95,13 +95,40 @@ export class AppointmentService {
 
     await this.profileService.getPatientProfile(patientId);
 
-    const now = new Date();
-    const todayString = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    if (patientId === doctorId) {
+      throw new BadRequestException('You cannot book an appointment with yourself.');
+    }
 
-    const [startHours, startMinutes] = startTime.split(':').map(Number);
-    const slotStartMinutes = startHours * 60 + startMinutes;
+    const doctor = await this.doctorRepo.findOne({ 
+      where: { user: { id: doctorId } },
+      relations: { user: true }
+    });
 
+    if (!doctor) {
+      throw new NotFoundException('Doctor not found.');
+    }
+    
+    const [startStr, endStr] = doctor.availability ? doctor.availability.split('-') : ['09:00', '17:00'];
+    
+    const docStartTimeStr = startStr.trim(); 
+    const docEndTimeStr = endStr.trim();
+
+    const [docStartH, docStartM] = docStartTimeStr.split(':').map(Number);
+    const doctorStartMinutes = (docStartH * 60) + docStartM;
+
+    const [docEndH, docEndM] = docEndTimeStr.split(':').map(Number);
+    const doctorEndMinutes = (docEndH * 60) + docEndM;
+
+    const windowOpenMinutes = doctorStartMinutes - 120; 
+    const windowCloseMinutes = doctorEndMinutes - 60;   
+
+    const istDateString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+    const istDate = new Date(istDateString);
+    const currentMinutes = istDate.getHours() * 60 + istDate.getMinutes();
+    
+    const todayString = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    //DATE VALIDATIONS
     if (date < todayString) {
       throw new BadRequestException('Booking failed: You cannot book an appointment for a past date.');
     }
@@ -110,12 +137,23 @@ export class AppointmentService {
       throw new BadRequestException('Booking failed: Appointments are currently only allowed for today.');
     }
 
-    if (date === todayString && slotStartMinutes <= currentMinutes) {
-      throw new BadRequestException('Booking failed: You cannot book a time slot that has already passed today.');
+    //BOOKING WINDOW VALIDATIONS
+    if (currentMinutes < windowOpenMinutes) {
+      const openTime = `${Math.floor(windowOpenMinutes / 60).toString().padStart(2, '0')}:${(windowOpenMinutes % 60).toString().padStart(2, '0')}`;
+      throw new BadRequestException(`Booking rejected: The booking window has not opened yet. It opens at ${openTime}.`);
     }
 
-    if (patientId === doctorId) {
-      throw new BadRequestException('You cannot book an appointment with yourself.');
+    if (currentMinutes > windowCloseMinutes) {
+      const closeTime = `${Math.floor(windowCloseMinutes / 60).toString().padStart(2, '0')}:${(windowCloseMinutes % 60).toString().padStart(2, '0')}`;
+      throw new BadRequestException(`Booking rejected: The booking window is closed for today. It closed at ${closeTime}.`);
+    }
+
+    //PAST SLOT VALIDATION
+    const [startHours, startMinutes] = startTime.split(':').map(Number);
+    const slotStartMinutes = startHours * 60 + startMinutes;
+
+    if (date === todayString && slotStartMinutes <= currentMinutes) {
+      throw new BadRequestException('Booking failed: You cannot book a time slot that has already passed today.');
     }
 
     let appointment; 
@@ -192,6 +230,7 @@ export class AppointmentService {
     try {
       savedAppointment = await this.appointmentRepo.save(appointment);
     } catch (error) {
+      console.error("DB SAVE ERROR:", error);
       throw new NotFoundException('Doctor not found or invalid data provided.');
     }
 
@@ -204,7 +243,7 @@ export class AppointmentService {
 
     return savedAppointment;
   }
-  
+
   async getPatientAppointments(patientId: string) {
     const appointments = await this.appointmentRepo.find({
       where: { patient: { id: patientId } },
