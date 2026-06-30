@@ -6,12 +6,19 @@ import { AvailabilityService } from 'src/doctor/availability/availability.servic
 import { NotificationService } from 'src/notification/notification.service';
 import { NotificationType } from 'src/notification/notification.entity';
 import { ProfileService } from 'src/profile/profile.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { Doctor } from 'src/profile/entities/doctor.entity';
+
 @Injectable()
 export class AppointmentService {
   constructor(
     @InjectRepository(Appointment)
     private appointmentRepo: Repository<Appointment>,
     private availabilityService: AvailabilityService,
+    
+    @InjectRepository(Doctor)
+    private readonly doctorRepo: Repository<Doctor>,
+    
     private readonly notificationService: NotificationService,
     private readonly profileService: ProfileService
   ) {}
@@ -28,10 +35,64 @@ export class AppointmentService {
     }
   }
 
+  @Cron(CronExpression.EVERY_HOUR) 
+  async sendAppointmentReminders() {
+    const now = new Date();
+    
+    const upcomingAppointments = await this.appointmentRepo.find({
+      where: {
+        status: AppointmentStatus.BOOKED,
+        isReminderSent: false,
+      },
+      relations: { patient: true, doctor: true } 
+    });
+
+    for (const appt of upcomingAppointments) {
+      let dateString = '';
+      if (typeof appt.appointmentDate === 'string') {
+        dateString = appt.appointmentDate.substring(0, 10);
+      } else {
+        dateString = new Date(appt.appointmentDate).toISOString().substring(0, 10);
+      }
+
+      let timeString = appt.startTime;
+      if (timeString.length === 5) {
+        timeString = `${timeString}:00`;
+      }
+
+      const finalIsoString = `${dateString}T${timeString}+05:30`;
+      const apptDateTime = new Date(finalIsoString);
+      const diffInHours = (apptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+      if (diffInHours > 0 && diffInHours <= 24) {
+        const doctorProfile = await this.doctorRepo.findOne({
+          where: { user: { id: appt.doctor.id } }
+        });
+        const doctorName = doctorProfile?.fullName || 'Doctor';
+
+        let message = '';
+        if (appt.schedulingType === 'WAVE') {
+          message = `Reminder: You have an appointment with   ${doctorName} today.\nReporting Time: ${appt.startTime}\nToken Number: ${appt.tokenNumber}`;
+        } else {
+          message = `Reminder: You have an appointment with ${doctorName} on ${dateString} at ${appt.startTime}.`;
+        }
+
+        await this.notificationService.create(
+          appt.patient.id,
+          'Upcoming Appointment Reminder',
+          message,
+          NotificationType.APPOINTMENT_REMINDER
+        );
+
+        appt.isReminderSent = true;
+        await this.appointmentRepo.save(appt);
+      }
+    }
+  }
+
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
     this.validateCalendarDate(date);
 
-    // Ensure the user has completed their patient profile before allowing booking
     await this.profileService.getPatientProfile(patientId);
 
     const now = new Date();
