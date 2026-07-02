@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Doctor } from '../profile/entities/doctor.entity';
 import { GetDoctorsFilterDto } from './dto/get-doctor-filter.dto';
 import { Appointment, AppointmentStatus } from '../appointment/entities/appointment.entity';
+import { DoctorLeave } from './entities/doctor-leave.entity';
 
 @Injectable()
 export class DoctorService {
@@ -13,6 +14,9 @@ export class DoctorService {
 
     @InjectRepository(Appointment)
     private appointmentRepository: Repository<Appointment>,
+
+    @InjectRepository(DoctorLeave)
+    private doctorLeaveRepository: Repository<DoctorLeave>,
   ) { }
 
   async getDoctors(filterDto: GetDoctorsFilterDto) {
@@ -105,7 +109,7 @@ export class DoctorService {
     if (appointmentDateTime < now) {
       throw new BadRequestException('You cannot cancel an appointment that has already passed.');
     }
-    
+
     if (appointment.status === AppointmentStatus.CANCELLED) {
       throw new BadRequestException(`Appointment with ID ${appointmentId} is already cancelled.`);
     }
@@ -117,6 +121,63 @@ export class DoctorService {
       message: 'Appointment successfully cancelled',
       appointmentId: appointment.id,
       status: appointment.status,
+    };
+  }
+
+  async applyForLeave(userId: string, date: string, reason?: string) {
+    const doctor = await this.doctorRepository.findOne({
+      where: { user: { id: userId } },
+      relations: { user: true }
+    });
+
+    if (!doctor) {
+      throw new NotFoundException('Doctor profile not found.');
+    }
+
+    const todayString = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    if (date < todayString) {
+      throw new BadRequestException('Invalid leave date: Cannot apply for leave on a past date.');
+    }
+
+    const existingLeave = await this.doctorLeaveRepository.findOne({
+      where: { doctor: { id: doctor.id }, date: date }
+    });
+
+    if (existingLeave) {
+      throw new ConflictException('Leave is already applied for this date.');
+    }
+
+    const existingAppointments = await this.appointmentRepository.count({
+      where: {
+        doctor: { id: doctor.user.id },
+        appointmentDate: date,
+        status: AppointmentStatus.BOOKED,
+      }
+    });
+
+    if (existingAppointments > 0) {
+      throw new BadRequestException(
+        'Cannot apply leave. Appointments are already scheduled on this date. Please cancel or reschedule existing appointments first.'
+      );
+    }
+
+    const leave = this.doctorLeaveRepository.create({
+      date,
+      reason,
+      doctor
+    });
+
+    const savedLeave = await this.doctorLeaveRepository.save(leave);
+
+    return {
+      success: true,
+      message: 'Leave application submitted successfully.',
+      data: {
+        id: savedLeave.id,
+        date: savedLeave.date,
+        reason: savedLeave.reason,
+        doctorId: doctor.id
+      }
     };
   }
 }
