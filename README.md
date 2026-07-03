@@ -13,6 +13,7 @@ A robust, scalable, and secure backend application built with **NestJS** and **T
 
 - **Role-Based Access Control (RBAC):** Secure JWT authentication enforcing strict boundaries between `DOCTOR` and `PATIENT` roles.
 - **Advanced Scheduling Engine:** Supports recurring weekly schedules (Stream) and custom date-specific overrides (Wave scheduling models).
+- **Smart Auto-Cancellation:** When a doctor applies a custom override, the system automatically detects, cancels, and notifies patients of any conflicting pre-existing appointments, ensuring schedules remain strictly synced.
 - **Separation of Concerns:** Highly modular architecture utilizing NestJS controllers, services, and DTOs to ensure maintainability.
 - **Robust Data Validation:** Leveraging `class-validator` to intercept and sanitize payloads before they reach business logic.
 - **Relational Integrity:** Fully normalized PostgreSQL database orchestrated via TypeORM.
@@ -191,6 +192,7 @@ $ npm run start:dev
   "endTime": "14:00"
 }
 ```
+*Note: Adding an override will trigger a 24-hour grace period check. If valid, any existing appointments falling outside this new time window will be automatically cancelled, and in-app notifications will be sent to the affected patients and the doctor.*
 </details>
 
 <details>
@@ -273,6 +275,78 @@ $ npm run start:dev
 
 <details>
 <summary><code>GET</code> <b>/appointment/doctor</b> - Get doctor appointments</summary>
+
+**Headers:** `Authorization: Bearer <token>`
+</details>
+
+---
+
+### 👨‍⚕️ Doctor General Actions
+
+<details>
+<summary><code>GET</code> <b>/doctor</b> - Get all doctors (with filters)</summary>
+
+**Headers:** `Authorization: Bearer <token>`  
+**Query Parameters:** `search`, `specialization`, `availability`, `page`, `limit`
+</details>
+
+<details>
+<summary><code>GET</code> <b>/doctor/:id</b> - Get doctor by ID</summary>
+
+**Headers:** `Authorization: Bearer <token>`
+</details>
+
+<details>
+<summary><code>POST</code> <b>/doctor/leave</b> - Apply for leave</summary>
+
+**Headers:** `Authorization: Bearer <token>`  
+**Request Body** (`application/json`)
+```json
+{
+  "date": "2024-12-25",
+  "reason": "Personal vacation"
+}
+```
+</details>
+
+<details>
+<summary><code>GET</code> <b>/doctor/:doctorId/slots</b> - Get available slots for a specific date</summary>
+
+**Headers:** `Authorization: Bearer <token>`  
+**Query Parameters:** `date` (YYYY-MM-DD), `duration` (optional)
+</details>
+
+<details>
+<summary><code>GET</code> <b>/doctor/:doctorId/next-available</b> - Get next available slot</summary>
+
+**Headers:** `Authorization: Bearer <token>`  
+**Query Parameters:** `date` (YYYY-MM-DD), `duration` (optional)
+</details>
+
+---
+
+### 🔔 Notifications
+
+<details>
+<summary><code>GET</code> <b>/notifications</b> - Get all notifications for user</summary>
+
+**Headers:** `Authorization: Bearer <token>`
+</details>
+
+<details>
+<summary><code>GET</code> <b>/notifications/unread-count</b> - Get count of unread notifications</summary>
+
+**Headers:** `Authorization: Bearer <token>`
+</details>
+
+<details>
+<summary><code>PATCH</code> <b>/notifications/read-all</b> - Mark all notifications as read</summary>
+
+**Headers:** `Authorization: Bearer <token>`
+</details>
+
+<details>
+<summary><code>PATCH</code> <b>/notifications/:id/read</b> - Mark specific notification as read</summary>
 
 **Headers:** `Authorization: Bearer <token>`
 </details>
