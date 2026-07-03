@@ -5,6 +5,8 @@ import { RecurringAvailability } from '../entities/recurring-availability.entity
 import { CustomAvailability } from '../entities/custom-availability.entity';
 import { Appointment } from '../../appointment/entities/appointment.entity';
 import { AppointmentStatus } from '../../appointment/entities/appointment.entity';
+import { NotificationService } from '../../notification/notification.service';
+import { NotificationType } from '../../notification/notification.entity';
 
 @Injectable()
 export class AvailabilityService {
@@ -15,7 +17,8 @@ export class AvailabilityService {
     private customRepo: Repository<CustomAvailability>,
     @InjectRepository(Appointment)
     private appointmentRepo: Repository<Appointment>,
-  ) {}
+    private notificationService: NotificationService,
+  ) { }
 
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
@@ -56,9 +59,9 @@ export class AvailabilityService {
   }
 
   async createRecurring(
-    doctorId: string, 
-    dayOfWeek: number, 
-    startTime: string, 
+    doctorId: string,
+    dayOfWeek: number,
+    startTime: string,
     endTime: string,
     schedulingType: string = 'STREAM',
     maxCapacity: number | null = null,
@@ -82,9 +85,9 @@ export class AvailabilityService {
   }
 
   async createCustomOverride(
-    doctorId: string, 
-    specificDate: string, 
-    startTime: string, 
+    doctorId: string,
+    specificDate: string,
+    startTime: string,
     endTime: string,
     schedulingType: string = 'STREAM',
     maxCapacity: number | null = null,
@@ -125,7 +128,64 @@ export class AvailabilityService {
       bufferTime,
     });
 
-    return this.customRepo.save(override);
+    const savedOverride = await this.customRepo.save(override);
+
+    const existingAppointments = await this.appointmentRepo.find({
+      where: {
+        doctor: { id: doctorId },
+        appointmentDate: specificDate,
+        status: AppointmentStatus.BOOKED,
+      },
+    });
+
+    if (existingAppointments.length > 0) {
+      const overrideDate = new Date(`${specificDate}T${startTime}`);
+      const timeDiff = overrideDate.getTime() - now.getTime();
+      const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+      if (hoursDiff < 24) {
+        await this.customRepo.remove(savedOverride);
+        throw new BadRequestException('Cannot override availability less than 24 hours in advance when appointments are already booked.');
+      }
+    }
+
+    let cancelledCount = 0;
+    for (const appt of existingAppointments) {
+      const apptStart = this.timeToMinutes(appt.startTime);
+      const apptEnd = this.timeToMinutes(appt.endTime);
+      const overrideStart = this.timeToMinutes(startTime);
+      const overrideEnd = this.timeToMinutes(endTime);
+
+      const isCompletelyWithin = apptStart >= overrideStart && apptEnd <= overrideEnd;
+
+      if (!isCompletelyWithin) {
+        appt.status = AppointmentStatus.CANCELLED;
+        await this.appointmentRepo.save(appt);
+        cancelledCount++;
+
+        await this.notificationService.create(
+          appt.patientId,
+          'Appointment Cancelled',
+          `Your appointment on ${specificDate} at ${appt.startTime} has been cancelled because the doctor updated their availability. Please book another appointment.`,
+          NotificationType.APPOINTMENT_CANCELLED,
+        );
+      }
+    }
+
+    if (cancelledCount > 0) {
+      await this.notificationService.create(
+        doctorId,
+        'Appointments Cancelled',
+        `${cancelledCount} appointment(s) on ${specificDate} were automatically cancelled due to your availability override.`,
+        NotificationType.APPOINTMENT_CANCELLED,
+      );
+    }
+
+    return {
+      override: savedOverride,
+      cancelledCount,
+      message: cancelledCount > 0 ? `Availability updated. ${cancelledCount} conflicting appointment(s) cancelled.` : 'Availability updated successfully.',
+    };
   }
 
   async getRecurring(doctorId: string) {
@@ -143,9 +203,8 @@ export class AvailabilityService {
   }
 
   async deleteRecurring(doctorId: string, id: string) {
-    // We explicitly check doctorId so a doctor can't delete someone else's slot!
     const result = await this.recurringRepo.delete({ id, doctor: { id: doctorId } });
-    
+
     if (result.affected === 0) {
       throw new NotFoundException('Availability slot not found');
     }
@@ -159,16 +218,16 @@ export class AvailabilityService {
     }
 
     await this.deleteRecurring(doctorId, id);
-    
+
     try {
       return await this.createRecurring(doctorId, dayOfWeek, startTime, endTime);
     } catch (error) {
       await this.recurringRepo.save(slot);
-      throw error; 
+      throw error;
     }
   }
 
- async getAvailableSlots(doctorId: string, date: string, defaultDuration: number = 15) {
+  async getAvailableSlots(doctorId: string, date: string, defaultDuration: number = 15) {
     if (defaultDuration <= 0) throw new BadRequestException('Duration must be positive');
 
     const now = new Date();
@@ -199,10 +258,10 @@ export class AvailabilityService {
     }
 
     const bookedAppointments = await this.appointmentRepo.find({
-      where: { 
-        doctor: { id: doctorId }, 
-        appointmentDate: date, 
-        status: AppointmentStatus.BOOKED 
+      where: {
+        doctor: { id: doctorId },
+        appointmentDate: date,
+        status: AppointmentStatus.BOOKED
       }
     });
 
@@ -211,7 +270,7 @@ export class AvailabilityService {
     for (const block of activeAvailability) {
       let currentSlotStart = this.timeToMinutes(block.startTime);
       const blockEnd = this.timeToMinutes(block.endTime);
-      
+
       const type = block.schedulingType || 'STREAM';
 
       // PATH A: WAVE SCHEDULING (Grouped Window)
@@ -224,7 +283,7 @@ export class AvailabilityService {
         }).length;
 
         if (date === todayString && blockEnd <= currentMinutes) {
-          continue; 
+          continue;
         }
 
         generatedSlots.push({
@@ -236,8 +295,8 @@ export class AvailabilityService {
           booked: bookedCount,
           status: bookedCount >= capacity ? 'full' : 'available',
         });
-      } 
-   
+      }
+
       // PATH B: STREAM SCHEDULING (Exact Minutes)
       else {
         const slotDuration = block.slotDuration || defaultDuration;
@@ -283,18 +342,18 @@ export class AvailabilityService {
     while (workingDaysChecked < maxWorkingDaysToSearch && loopFailsafe < 60) {
       loopFailsafe++;
       const dateString = currentDate.toISOString().split('T')[0];
-      
+
       try {
         const availabilityResult = await this.getAvailableSlots(doctorId, dateString, duration);
 
         workingDaysChecked++;
 
         if (availabilityResult && availabilityResult.slots && availabilityResult.slots.length > 0) {
-          
+
           return {
             success: true,
-            message: workingDaysChecked === 1 
-              ? "Slots available for the requested date." 
+            message: workingDaysChecked === 1
+              ? "Slots available for the requested date."
               : `No slots on requested date. Next available found on ${dateString}.`,
             data: {
               date: dateString,

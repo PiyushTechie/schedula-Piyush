@@ -5,10 +5,12 @@ import { AvailabilityController } from './availability.controller';
 import { RecurringAvailability } from '../entities/recurring-availability.entity';
 import { CustomAvailability } from '../entities/custom-availability.entity';
 import { Appointment } from '../../appointment/entities/appointment.entity';
+import { NotificationModule } from '../../notification/notification.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RecurringAvailability, CustomAvailability, Appointment])
+    TypeOrmModule.forFeature([RecurringAvailability, CustomAvailability, Appointment]),
+    NotificationModule
   ],
   controllers: [AvailabilityController],
   providers: [AvailabilityService],

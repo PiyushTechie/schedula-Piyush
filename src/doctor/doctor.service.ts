@@ -178,6 +178,6 @@ export class DoctorService {
         reason: savedLeave.reason,
         doctorId: doctor.id
       }
-    };
-  }
+    }
+  }  
 }
