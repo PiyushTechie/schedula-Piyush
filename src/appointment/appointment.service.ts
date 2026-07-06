@@ -8,6 +8,7 @@ import { NotificationType } from 'src/notification/notification.entity';
 import { ProfileService } from 'src/profile/profile.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Doctor } from 'src/profile/entities/doctor.entity';
+import { DoctorLeave } from 'src/doctor/entities/doctor-leave.entity';
 
 @Injectable()
 export class AppointmentService {
@@ -18,6 +19,9 @@ export class AppointmentService {
     
     @InjectRepository(Doctor)
     private readonly doctorRepo: Repository<Doctor>,
+
+    @InjectRepository(DoctorLeave)
+    private readonly doctorLeaveRepo: Repository<DoctorLeave>,
     
     private readonly notificationService: NotificationService,
     private readonly profileService: ProfileService
@@ -149,6 +153,17 @@ export class AppointmentService {
       if (date > maxAllowedDateString) {
         throw new BadRequestException(`Booking failed: You can only book up to ${maxDays} days in advance for this doctor.`);
       }
+    }
+
+    const isDoctorOnLeave = await this.doctorLeaveRepo.findOne({
+      where: { 
+        doctor: { id: doctor.id }, 
+        date: date 
+      }
+    });
+
+    if (isDoctorOnLeave) {
+      throw new BadRequestException('Doctor is unavailable on this date. Please select another available date.');
     }
 
     //BOOKING WINDOW VALIDATIONS

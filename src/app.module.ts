@@ -10,6 +10,8 @@ import { AvailabilityModule } from './doctor/availability/availability.module';
 import { AppointmentModule } from './appointment/appointment.module';
 import { NotificationModule } from './notification/notification.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { DoctorLeave } from './doctor/entities/doctor-leave.entity';
+import { Appointment } from './appointment/entities/appointment.entity';
 
 @Module({
   imports: [

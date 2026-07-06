@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Post,
+  Body,
   Param,
   Query,
   UseGuards,
@@ -38,6 +40,11 @@ export class DoctorController {
     return this.doctorService.getAppointments(doctorId, date);
   }
 
+  @Post('leave')
+  async applyForLeave(@Request() req, @Body() body: { date: string, reason?: string }) {
+    return this.doctorService.applyForLeave(req.user.userId, body.date, body.reason);
+  }
+
   @Patch('appointments/:id/cancel')
   async cancelAppointment(
     @Request() req,
@@ -50,13 +57,12 @@ export class DoctorController {
   @Get(':doctorId/next-available')
   async getNextAvailable(
     @Param('doctorId', ParseUUIDPipe) doctorId: string,
-    @Query('date') date: string, 
+    @Query('date') date: string,
     @Query('duration') durationStr?: string
   ) {
 
     const duration = durationStr ? parseInt(durationStr, 10) : 15;
-    
-    
+
     if (!date) {
       throw new BadRequestException('Start date query parameter is required (YYYY-MM-DD)');
     }
@@ -69,7 +75,6 @@ export class DoctorController {
       throw new BadRequestException('Cannot search for availability in the past.');
     }
 
-    // Explicit check for invalid duration string like "abcd"
     if (durationStr !== undefined && isNaN(parseInt(durationStr, 10))) {
       throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
     }
@@ -77,7 +82,7 @@ export class DoctorController {
     if (isNaN(duration) || duration <= 0 || duration > 120) {
       throw new BadRequestException('Duration must be a valid number between 1 and 120 minutes.');
     }
-    
+
     return this.availabilityService.getNextAvailableSlots(doctorId, date, duration, 30);
   }
 
@@ -108,4 +113,6 @@ export class DoctorController {
 
     return this.availabilityService.getAvailableSlots(doctorId, date, duration);
   }
+
+
 }
