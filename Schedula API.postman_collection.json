@@ -747,11 +747,12 @@
           },
           "request": {
             "method": "GET",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"doctor@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
-            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notifications",
               "host": [
@@ -801,7 +802,22 @@
           "name": "Unread Count",
           "request": {
             "method": "GET",
-            "header": []
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-count"
+              ]
+            }
           },
           "response": []
         },
@@ -809,7 +825,12 @@
           "name": "Mark Real All",
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notifications/read-all",
               "host": [
