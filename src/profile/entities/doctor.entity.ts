@@ -24,6 +24,12 @@ export class Doctor {
   @Column()
   availability!: string;
 
+  @Column({ default: false })
+  allowFutureBooking!: boolean;
+
+  @Column({ type: 'int', nullable: true })
+  maxFutureBookingDays!: number | null;
+
   @OneToOne(() => User)
   @JoinColumn()
   user!: User;

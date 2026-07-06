@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Appointment, AppointmentStatus } from './entities/appointment.entity';
@@ -92,7 +92,6 @@ export class AppointmentService {
 
   async bookAppointment(patientId: string, doctorId: string, date: string, startTime: string, endTime: string, schedulingType: string = 'STREAM') {
     this.validateCalendarDate(date);
-
     await this.profileService.getPatientProfile(patientId);
 
     if (patientId === doctorId) {
@@ -101,15 +100,18 @@ export class AppointmentService {
 
     const doctor = await this.doctorRepo.findOne({ 
       where: { user: { id: doctorId } },
-      relations: { user: true }
+      relations: { user: true } 
     });
 
     if (!doctor) {
       throw new NotFoundException('Doctor not found.');
     }
-    
+
+    if (doctor.maxFutureBookingDays !== null && doctor.maxFutureBookingDays < 0) {
+      throw new InternalServerErrorException('Invalid doctor configuration: Future booking days cannot be negative.');
+    }
+
     const [startStr, endStr] = doctor.availability ? doctor.availability.split('-') : ['09:00', '17:00'];
-    
     const docStartTimeStr = startStr.trim(); 
     const docEndTimeStr = endStr.trim();
 
@@ -128,13 +130,25 @@ export class AppointmentService {
     
     const todayString = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
-    //DATE VALIDATIONS
+    //FUTURE BOOKING DATE VALIDATIONS
     if (date < todayString) {
       throw new BadRequestException('Booking failed: You cannot book an appointment for a past date.');
     }
 
     if (date > todayString) {
-      throw new BadRequestException('Booking failed: Appointments are currently only allowed for today.');
+      if (!doctor.allowFutureBooking) {
+        throw new BadRequestException('Booking failed: This doctor only accepts same-day appointments.');
+      }
+
+      const maxDays = doctor.maxFutureBookingDays ?? 7; //Defaults to 7 if null
+      
+      const maxAllowedDate = new Date(istDate);
+      maxAllowedDate.setDate(maxAllowedDate.getDate() + maxDays);
+      const maxAllowedDateString = maxAllowedDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      if (date > maxAllowedDateString) {
+        throw new BadRequestException(`Booking failed: You can only book up to ${maxDays} days in advance for this doctor.`);
+      }
     }
 
     //BOOKING WINDOW VALIDATIONS
